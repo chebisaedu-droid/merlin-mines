@@ -38,27 +38,35 @@ const activeMatches = new Map();
 // ----------------------------------------------------------------
 // 3. M-PESA UTILITY FUNCTIONS
 // ----------------------------------------------------------------
-// ⚠️ HARDCODED CREDENTIALS (FOR TESTING ONLY)
-// PASTE YOUR REAL KEYS INSIDE THE QUOTES BELOW
-const consumer_key = '3I5pZPogbQuuGvFqebt4CHap1DOQvmanUHNvf7FJpoMU4M1O'; 
-const consumer_secret = 'BfGLUAVk013wAm1AP520oqkXe9kyMJtaJx9BLnRk0mEP9kFsMwVQxHlAZTIi9Tln';
+// ==========================================
+// 🔐 M-PESA TOKEN GENERATOR (HARDCODED FIX)
+// ==========================================
+async function getMpesaToken() {
+    // 1. HARDCODE YOUR KEYS HERE (Inside the quotes)
+    const consumer_key = '3I5pZPogbQuuGvFqebt4CHap1DOQvmanUHNvf7FJpoMU4M1O';
+    const consumer_secret = 'BfGLUAVk013wAm1AP520oqkXe9kyMJtaJx9BLnRk0mEP9kFsMwVQxHlAZTIi9Tln';
 
-// FORCE SANDBOX URL
-const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+    // 2. USE SANDBOX URL
+    const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
 
-console.log("USING KEY:", consumer_key); // This will print in logs so we can see if it's correct
+    // 3. CREATE AUTH HEADER
+    const auth = "Basic " + Buffer.from(consumer_key + ":" + consumer_secret).toString("base64");
 
     try {
-        const response = await axios.get(
-            'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
-            { headers: { Authorization: `Basic ${auth}` } }
-        );
+        // 4. REQUEST THE TOKEN
+        const response = await axios.get(url, {
+            headers: { "Authorization": auth }
+        });
+
+        console.log("✅ TOKEN GENERATED:", response.data.access_token);
         return response.data.access_token;
+
     } catch (error) {
-        console.error("❌ M-Pesa Token Error:", error.message);
+        console.error("❌ TOKEN FAILED:", error.response ? error.response.data : error.message);
         throw error;
     }
-};
+}
+
 
 const getTimestamp = () => {
     const date = new Date();
