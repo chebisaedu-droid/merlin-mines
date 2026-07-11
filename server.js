@@ -45,7 +45,7 @@ const getMpesaToken = async () => {
     
     try {
         const response = await axios.get(
-            'https://safaricom.co.ke',
+            'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
             { headers: { Authorization: `Basic ${auth}` } }
         );
         return response.data.access_token;
