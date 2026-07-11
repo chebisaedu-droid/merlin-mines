@@ -38,11 +38,16 @@ const activeMatches = new Map();
 // ----------------------------------------------------------------
 // 3. M-PESA UTILITY FUNCTIONS
 // ----------------------------------------------------------------
-const getMpesaToken = async () => {
-    const consumerKey = process.env.MPESA_KEY;
-    const consumerSecret = process.env.MPESA_SECRET;
-    const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
-    
+// ⚠️ HARDCODED CREDENTIALS (FOR TESTING ONLY)
+// PASTE YOUR REAL KEYS INSIDE THE QUOTES BELOW
+const consumer_key = '3I5pZPogbQuuGvFqebt4CHap1DOQvmanUHNvf7FJpoMU4M1O'; 
+const consumer_secret = 'BfGLUAVk013wAm1AP520oqkXe9kyMJtaJx9BLnRk0mEP9kFsMwVQxHlAZTIi9Tln';
+
+// FORCE SANDBOX URL
+const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+
+console.log("USING KEY:", consumer_key); // This will print in logs so we can see if it's correct
+
     try {
         const response = await axios.get(
             'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
