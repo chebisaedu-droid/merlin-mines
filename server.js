@@ -109,35 +109,38 @@ app.get('/api/v1/products', (req, res) => {
 
 
 // ==========================================
-// 📲 REPLACED ROUTE C: INITIALIZE SANDBOX M-PESA STK PUSH (NUCLEAR FIX)
+// 📲 REPLACED ROUTE C: INITIALIZE PRODUCTION M-PESA STK PUSH (MIGRATED)
 // ==========================================
 app.post('/api/v1/payment/stk-push', async (req, res) => {
     const { productId, phone, price } = req.body;
-    console.log(`🧪 Nuclear STK push triggered for ${phone} | KES ${price}`);
+    console.log(`🔌 Production STK push triggered for ${phone} | KES ${price}`);
 
     try {
-        // 1. Fetch live Access Token using your working helper function
+        // 1. Fetch live Production Access Token using your global helper function
         const token = await getMpesaToken();
         
-        // 2. Hardcoded Sandbox Validation Values
-        const shortCode = "174379"; 
-        const passkey = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
+        // 2. 🟢 PRODUCTION VARIABLE ALIGNMENT: Read variables cleanly from Railway Dashboard
+        const shortCode = process.env.MPESA_SHORTCODE; 
+        const passkey = process.env.MPESA_PASSKEY;
+        const callbackUrl = process.env.CALLBACK_URL; // e.g. https://your-app.url
+
+        if (!shortCode || !passkey || !callbackUrl) {
+            console.error("❌ CRITICAL: Missing production environment variables (MPESA_SHORTCODE, MPESA_PASSKEY, or CALLBACK_URL).");
+            return res.status(500).json({ success: false, message: "Server configuration environment error." });
+        }
         
         // 3. Clean Inline Timestamp Generation (YYYYMMDDHHmmss)
         const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-        
         const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
-        
-        // Dynamic callback tracking pointing directly to your current Railway backend instance
-        const callbackUrl = `https://merlin-mines-backend-production-1a88.up.railway.app`;
 
-        // 4. Integrated Payload Builder
+        
+        // 4. 🟢 PRODUCTION PAYLOAD: Changed to live gateway specification layouts
         const stkPayload = {
             BusinessShortCode: shortCode,
             Password: password,
             Timestamp: timestamp,
-            TransactionType: "CustomerPayBillOnline",
-            Amount: parseInt(price), // Linked dynamically to your catalog price selection
+            TransactionType: "CustomerPayBillOnline", // 💡 Switch to "CustomerBuyGoodsOnline" if utilizing a Till Number
+            Amount: Math.floor(Number(price)), 
             PartyA: phone,            
             PartyB: shortCode,
             PhoneNumber: phone,       
@@ -146,14 +149,15 @@ app.post('/api/v1/payment/stk-push', async (req, res) => {
             TransactionDesc: "Combat Stake"
         };
 
-        // 5. Fire Request directly to Safaricom Sandbox Gateways
+        // 5. 🟢 PRODUCTION GATEWAY CONNECTION: Routed out directly to Safaricom's live endpoint
         const stkResponse = await axios.post(
-            'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', 
+            'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', 
             stkPayload, 
             { 
                 headers: { 
                     'Authorization': `Bearer ${token}`,
-                    'User-Agent': 'Mozilla/5.0'
+                    'User-Agent': 'Mozilla/5.0',
+                    'Content-Type': 'application/json'
                 } 
             }
         );
@@ -169,29 +173,37 @@ app.post('/api/v1/payment/stk-push', async (req, res) => {
         liveMpesaTransactions[checkoutRequestId] = {
             productId: productId,
             phoneNumber: phone,
-            amountExpected: parseInt(price),
+            amountExpected: Math.floor(Number(price)),
             state: "PENDING",
             activationCode: null
         };
 
-        console.log(`[STK Push Status] Success for ${phone} | ID: ${checkoutRequestId}`);
+        console.log(`[STK Push Status] Production Success for ${phone} | ID: ${checkoutRequestId}`);
         return res.status(200).json({ success: true, checkoutRequestId });
 
     } catch (error) {
-        console.error("❌ NUCLEAR ROUTE CRASH ERROR:", error.response ? error.response.data : error.message);
+        console.error("❌ PRODUCTION ROUTE CRASH ERROR:", error.response ? error.response.data : error.message);
         return res.status(500).json({ 
             success: false, 
-            message: "Safaricom sandbox gateway validation error."
+            message: "Safaricom production gateway validation error."
         });
     }
 });
+
 // ==========================================
-// 🔐 GLOBAL M-PESA TOKEN GENERATOR HOOK
+// 🔐 GLOBAL PRODUCTION M-PESA TOKEN GENERATOR HOOK
 // ==========================================
 async function getMpesaToken() {
-    const consumer_key = '3I5pZPogbQuuGvFqebt4CHap1DOQvmanUHNvf7FJpoMU4M1O';
-    const consumer_secret = 'BfGLUAVk013wAm1AP520oqkXe9kyMJtaJx9BLnRk0mEP9kFsMwVQxHlAZTIi9Tln';
-    const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+    // 🟢 PRODUCTION VARIABLE ALIGNMENT: Pulled dynamically from your secure Railway dashboard variables
+    const consumer_key = process.env.MPESA_CONSUMER_KEY;
+    const consumer_secret = process.env.MPESA_CONSUMER_SECRET;
+    
+    // 🟢 PRODUCTION GATEWAY: Routed directly to Safaricom's live authentication gateway
+    const url = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+
+    if (!consumer_key || !consumer_secret) {
+        throw new Error("CRITICAL CONFIG ERROR: Missing MPESA_CONSUMER_KEY or MPESA_CONSUMER_SECRET inside Railway environment variables.");
+    }
 
     // Standard string addition auth structure to bypass template limits
     const auth = "Basic " + Buffer.from(consumer_key + ":" + consumer_secret).toString("base64");
@@ -205,11 +217,10 @@ async function getMpesaToken() {
         });
         return response.data.access_token;
     } catch (error) {
-        console.error("❌ TOKEN FAILED:", error.response ? error.response.data : error.message);
+        console.error("❌ PRODUCTION TOKEN GENERATION FAILED:", error.response ? error.response.data : error.message);
         throw error;
     }
 }
-
 
 // ==========================================
 // 📥 ROUTE D: THE CRITICAL SECURE M-PESA WEBHOOK CALLBACK RECEIVER
