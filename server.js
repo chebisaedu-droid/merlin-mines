@@ -1,66 +1,209 @@
-// ================================================================
-// 💎 MERLIN MINES | SINGLE FILE BACKEND ENGINE (Production Ready)
-// ================================================================
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg');
-const nodemailer = require('nodemailer');
-const axios = require('axios'); // Requires: npm install axios
+const multer = require('multer');
+const archiver = require('archiver');
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
 
 const app = express();
-app.use(express.json());
+
+// 1. GLOBAL MIDDLEWARES
 app.use(cors());
+app.use(express.json()); // Essential for parsing incoming M-Pesa Callback payloads
+app.use(express.urlencoded({ extended: true }));
 
-// ----------------------------------------------------------------
-// 1. DATABASE CONNECTION (PostgreSQL)
-// ----------------------------------------------------------------
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Required for Railway
+// 2. PRODUCTION DIRECTORY SETUP FOR COMPRESSED ASSETS
+const STORAGE_DIR = path.join(__dirname, 'secure_storage');
+const TEMP_DIR = path.join(__dirname, 'temp_upload_hold');
+
+if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR);
+if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
+
+// 3. MULTER CONFIGURATION FOR DYNAMIC FOLDER SCANNING
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, TEMP_DIR);
+    },
+    filename: (req, file, cb) => {
+        // Sanitizes directory slashes so nested folder structures don't break the local OS filesystem
+        cb(null, Date.now() + '_' + file.originalname.replace(/\//g, '_'));
+    }
 });
+const upload = multer({ storage });
 
-// ----------------------------------------------------------------
-// 2. EMAIL CONFIGURATION (Gmail)
-// ----------------------------------------------------------------
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_APP_PASS
+// 4. IN-MEMORY PRODUCTION DATABASE INSTANCES
+let productCatalogDatabase = [];
+let liveMpesaTransactions = {};
+
+// ==========================================
+// 📂 ROUTE A: ADMIN PANEL FOLDER COMPRESSION & UPLOAD HOOK
+// ==========================================
+app.post('/api/v1/admin/upload', upload.array('assets'), (req, res) => {
+    console.log("📥 Admin initiated a raw folder architectural upload sequence...");
+    
+    try {
+        const { title, physics, price, felt } = req.body;
+        
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ success: false, message: "No source files detected in upload stream." });
+        }
+
+        const productId = 'KP_PROD_' + Math.random().toString(36).substr(2, 9).toUpperCase();
+        const secureZipName = `KAPLANCE-${title.toUpperCase().replace(/\s+/g, '-')}-${productId}.zip`;
+        const finalZipPath = path.join(STORAGE_DIR, secureZipName);
+
+        // Initiate archiving pipeline streams
+        const outputStream = fs.createWriteStream(finalZipPath);
+        const zipArchive = archiver('zip', { zlib: { level: 9 } }); // Max compression level
+
+        outputStream.on('close', () => {
+            console.log(`📦 Compression finished successfully. Total bytes: ${zipArchive.pointer()}`);
+            
+            // Clean out the temporary upload holding folder to save Railway container disk space
+            req.files.forEach(file => {
+                if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+            });
+
+            // Inject the formal structured product into our live server registry
+            const freshAssetRecord = {
+                id: productId,
+                title: title,
+                physics_engine: physics,
+                felt_layout: felt,
+                price: parseInt(price),
+                download_vault_path: finalZipPath,
+                created_at: new Date()
+            };
+
+            productCatalogDatabase.push(freshAssetRecord);
+            console.log(`✨ Product "${title}" is now officially live on Kaplance Digital!`);
+            
+            return res.status(200).json({ success: true, message: "Asset folder packaged and pushed live." });
+        });
+
+        zipArchive.on('error', (err) => { throw err; });
+        
+        zipArchive.pipe(outputStream);
+        
+        // Loop through all uploaded files and append them to the zip bundle structure
+        req.files.forEach(file => {
+            zipArchive.file(file.path, { name: file.originalname });
+        });
+        
+        zipArchive.finalize();
+
+    } catch (error) {
+        console.error("❌ Admin panel compilation crash error:", error.message);
+        return res.status(500).json({ success: false, message: "Internal server archiving breakdown." });
     }
 });
 
-// Memory cache for OTPs and Active Matches (Temporary storage)
-const activeOtps = new Map();
-const activeMatches = new Map();
-
-// ----------------------------------------------------------------
-// 3. M-PESA UTILITY FUNCTIONS
-// ----------------------------------------------------------------
 // ==========================================
-// 🔐 M-PESA TOKEN GENERATOR (HARDCODED FIX)
+// 🛒 ROUTE B: PUBLIC STOREFRONT ACTIVE CATALOG FETCH HOOK
+// ==========================================
+app.get('/api/v1/products', (req, res) => {
+    // Serves the live dynamic inventory array to index.html
+    res.status(200).json(productCatalogDatabase);
+});
+
+
+// ==========================================
+// 📲 REPLACED ROUTE C: INITIALIZE SANDBOX M-PESA STK PUSH (NUCLEAR FIX)
+// ==========================================
+app.post('/api/v1/payment/stk-push', async (req, res) => {
+    const { productId, phone, price } = req.body;
+    console.log(`🧪 Nuclear STK push triggered for ${phone} | KES ${price}`);
+
+    try {
+        // 1. Fetch live Access Token using your working helper function
+        const token = await getMpesaToken();
+        
+        // 2. Hardcoded Sandbox Validation Values
+        const shortCode = "174379"; 
+        const passkey = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
+        
+        // 3. Clean Inline Timestamp Generation (YYYYMMDDHHmmss)
+        const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+        
+        const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
+        
+        // Dynamic callback tracking pointing directly to your current Railway backend instance
+        const callbackUrl = `https://merlin-mines-backend-production-1a88.up.railway.app`;
+
+        // 4. Integrated Payload Builder
+        const stkPayload = {
+            BusinessShortCode: shortCode,
+            Password: password,
+            Timestamp: timestamp,
+            TransactionType: "CustomerPayBillOnline",
+            Amount: parseInt(price), // Linked dynamically to your catalog price selection
+            PartyA: phone,            
+            PartyB: shortCode,
+            PhoneNumber: phone,       
+            CallBackURL: callbackUrl,
+            AccountReference: "MERLIN_VS",
+            TransactionDesc: "Combat Stake"
+        };
+
+        // 5. Fire Request directly to Safaricom Sandbox Gateways
+        const stkResponse = await axios.post(
+            'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', 
+            stkPayload, 
+            { 
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'User-Agent': 'Mozilla/5.0'
+                } 
+            }
+        );
+
+        // 6. Case-Sensitive Checkout Identifier Capture
+        const checkoutRequestId = stkResponse.data.CheckoutRequestID || stkResponse.data.checkoutRequestId;
+        
+        if (!checkoutRequestId) {
+            return res.status(400).json({ success: false, message: "Missing Checkout ID from Safaricom response configuration." });
+        }
+
+        // Cache the transaction session securely inside your in-memory array database
+        liveMpesaTransactions[checkoutRequestId] = {
+            productId: productId,
+            phoneNumber: phone,
+            amountExpected: parseInt(price),
+            state: "PENDING",
+            activationCode: null
+        };
+
+        console.log(`[STK Push Status] Success for ${phone} | ID: ${checkoutRequestId}`);
+        return res.status(200).json({ success: true, checkoutRequestId });
+
+    } catch (error) {
+        console.error("❌ NUCLEAR ROUTE CRASH ERROR:", error.response ? error.response.data : error.message);
+        return res.status(500).json({ 
+            success: false, 
+            message: "Safaricom sandbox gateway validation error."
+        });
+    }
+});
+// ==========================================
+// 🔐 GLOBAL M-PESA TOKEN GENERATOR HOOK
 // ==========================================
 async function getMpesaToken() {
-    // 1. HARDCODE YOUR KEYS HERE (Inside the quotes)
     const consumer_key = '3I5pZPogbQuuGvFqebt4CHap1DOQvmanUHNvf7FJpoMU4M1O';
     const consumer_secret = 'BfGLUAVk013wAm1AP520oqkXe9kyMJtaJx9BLnRk0mEP9kFsMwVQxHlAZTIi9Tln';
-
-    // 2. USE SANDBOX URL
     const url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
 
-    // 3. CREATE AUTH HEADER
+    // Standard string addition auth structure to bypass template limits
     const auth = "Basic " + Buffer.from(consumer_key + ":" + consumer_secret).toString("base64");
 
     try {
-        // 4. REQUEST THE TOKEN
         const response = await axios.get(url, {
-            headers: { "Authorization": auth }
+            headers: { 
+                "Authorization": auth,
+                "User-Agent": "Mozilla/5.0"
+            }
         });
-
-        console.log("✅ TOKEN GENERATED:", response.data.access_token);
         return response.data.access_token;
-
     } catch (error) {
         console.error("❌ TOKEN FAILED:", error.response ? error.response.data : error.message);
         throw error;
@@ -68,194 +211,77 @@ async function getMpesaToken() {
 }
 
 
-const getTimestamp = () => {
-    const date = new Date();
-    return date.toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-};
-
-// ----------------------------------------------------------------
-// 4. API ROUTES
-// ----------------------------------------------------------------
-
-// ➤ HEALTH CHECK
-app.get('/', (req, res) => res.send('💎 MERLIN MINES ENGINE ONLINE'));
-
-// ➤ AUTH: FORGOT PASSWORD (EMAIL)
-app.post('/api/v1/auth/forgot-password', async (req, res) => {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ success: false, message: "Email required" });
-
-    try {
-        // Check DB for user
-        const userCheck = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email.trim()]);
-        if (userCheck.rows.length === 0) return res.status(404).json({ success: false, message: "Email not found" });
-
-        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-        activeOtps.set(email.toLowerCase(), { code: otpCode, expires: Date.now() + 600000 });
-
-        await transporter.sendMail({
-            from: `"ZX SECURITY" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: "🔒 RESET CODE",
-            text: `Your Security Code: ${otpCode}`
-        });
-
-        res.json({ success: true, message: "OTP Sent" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: "Server Error" });
-    }
-});
-
-// ➤ AUTH: RESET PASSWORD
-app.post('/api/v1/auth/reset-password', async (req, res) => {
-    const { email, code, newPassword } = req.body;
-    const record = activeOtps.get(email.toLowerCase());
-
-    if (!record || record.code !== code || Date.now() > record.expires) {
-        return res.status(400).json({ success: false, message: "Invalid or Expired Code" });
-    }
-
-    try {
-        await pool.query('UPDATE users SET pass = $1 WHERE LOWER(email) = LOWER($2)', [newPassword, email]);
-        activeOtps.delete(email.toLowerCase());
-        res.json({ success: true, message: "Password Updated" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: "DB Update Failed" });
-    }
-});
-
-// ➤ PAYMENT: DUAL STK PUSH (The Combat Engine)
-app.post('/api/v1/payment/dual-stk', async (req, res) => {
-    const { player1, player2, stakeAmount } = req.body;
-    
-    // 1. Prepare M-Pesa Config
-    const token = await getMpesaToken();
-    const timestamp = getTimestamp();
-    const shortCode = process.env.MPESA_SHORTCODE;
-    const passkey = process.env.MPESA_PASSKEY;
-    const password = Buffer.from(`${shortCode}${passkey}${timestamp}`).toString('base64');
-    const callbackUrl = `${process.env.APP_URL}/api/v1/payment/callback`;
-
-    // 2. Define the STK Payload Builder
-    const createStkPayload = (phone) => ({
-        BusinessShortCode: shortCode,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: "CustomerPayBillOnline",
-        Amount: stakeAmount,
-        PartyA: phone,
-        PartyB: shortCode,
-        PhoneNumber: phone,
-        CallBackURL: callbackUrl,
-        AccountReference: "MERLIN_VS",
-        TransactionDesc: "Combat Stake"
-    });
-
-    try {
-        // 3. FIRE DUAL REQUESTS (Parallel Execution)
-        const [p1Response, p2Response] = await Promise.all([
-            axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(player1.phone), { headers: { Authorization: `Bearer ${token}` } }),
-            axios.post('https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest', createStkPayload(player2.phone), { headers: { Authorization: `Bearer ${token}` } })
-        ]);
-
-        // 4. Create Match ID
-        const matchId = "MATCH_" + Date.now();
-        
-        // Save initial state (In production, save this to DB)
-        activeMatches.set(matchId, {
-            p1: { phone: player1.phone, paid: false, reqId: p1Response.data.CheckoutRequestID },
-            p2: { phone: player2.phone, paid: false, reqId: p2Response.data.CheckoutRequestID },
-            stake: stakeAmount * 2
-        });
-
-        res.json({ success: true, matchId: matchId, message: "Dual STK Initiated" });
-
-    } catch (error) {
-        console.error("STK Fail:", error.response ? error.response.data : error.message);
-        res.status(500).json({ success: false, message: "M-Pesa Trigger Failed" });
-    }
-});
-
-// ➤ PAYMENT: CALLBACK HANDLER (Webhook)
+// ==========================================
+// 📥 ROUTE D: THE CRITICAL SECURE M-PESA WEBHOOK CALLBACK RECEIVER
+// ==========================================
 app.post('/api/v1/payment/callback', (req, res) => {
-    // Safaricom sends payment results here
-    console.log("💰 M-Pesa Callback:", JSON.stringify(req.body));
-    // TODO: Parse 'Body.stkCallback' to update match status in DB
-    res.json({ result: "received" });
-});
-
-// ----------------------------------------------------------------
-// 5. SERVER START
-// ----------------------------------------------------------------
-const PORT = process.env.PORT || 3000;
-// ----------------------------------------------------------------
-// 6. ADMIN DASHBOARD & PAYOUT CONTROLS
-// ----------------------------------------------------------------
-
-// 🔒 SECURITY MIDDLEWARE
-const authenticateAdmin = (req, res, next) => {
-    const key = req.headers['x-master-key'] || req.query.key;
-    if (key !== process.env.MASTER_KEY) {
-        return res.status(403).json({ success: false, message: "⛔ ACCESS DENIED: INVALID KEY" });
-    }
-    next();
-};
-
-// 📊 GET LIVE STATS
-app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
+    console.log("📥 Incoming Safaricom Daraja cryptographic payment payload received...");
+    
     try {
-        const userCount = await pool.query('SELECT COUNT(*) FROM users');
-        const totalCash = await pool.query('SELECT SUM(balance) FROM users');
-        const pendingPayouts = await pool.query("SELECT COUNT(*) FROM payouts WHERE status = 'PENDING'");
-        
-        res.json({
-            success: true,
-            stats: {
-                active_users: parseInt(userCount.rows[0].count),
-                total_assets_kes: parseInt(totalCash.rows[0].sum) || 0,
-                pending_withdrawals: parseInt(pendingPayouts.rows[0].count)
+        const bodyData = req.body.Body;
+        if (!bodyData || !bodyData.stkCallback) {
+            return res.status(400).json({ success: false, message: "Malformed callback data signature dropped." });
+        }
+
+        const callbackPayload = bodyData.stkCallback;
+        const incomingCheckoutId = callbackPayload.CheckoutRequestID;
+        const numericResultCode = callbackPayload.ResultCode;
+
+        // Safaricom ResultCode 0 strictly dictates user successfully entered PIN and funds shifted
+        if (numericResultCode === 0) {
+            const analyticalMetaItems = callbackPayload.CallbackMetadata.Item;
+            let validatedCashAmount = 0;
+            let safaricomReceiptId = "MPESA_REF_ERR";
+
+            analyticalMetaItems.forEach(element => {
+                if (element.Name === "Amount") validatedCashAmount = element.Value;
+                if (element.Name === "MpesaReceiptNumber") safaricomReceiptId = element.Value;
+            });
+
+            // Crosscheck if this payment correlates with a registered pending user click session
+            if (liveMpesaTransactions[incomingCheckoutId]) {
+                const transactionalSession = liveMpesaTransactions[incomingCheckoutId];
+                
+                // Construct the functional unblur activation token code
+                const operationalActivationKey = `MD-${safaricomReceiptId.substring(0, 4)}-${safaricomReceiptId.substring(4, 8)}-POOL`;
+                
+                transactionalSession.state = "COMPLETED";
+                transactionalSession.activationCode = operationalActivationKey;
+
+                console.log(`✅ [Payment Cleared] Transaction ID: ${safaricomReceiptId} confirmed KES ${validatedCashAmount}.`);
             }
-        });
-    } catch (err) { res.status(500).json({ error: "Stats Error" }); }
+        } else {
+            // Client canceled prompt, entered an incorrect PIN, or timed out on their phone
+            if (liveMpesaTransactions[incomingCheckoutId]) {
+                liveMpesaTransactions[incomingCheckoutId].state = "FAILED";
+            }
+            console.warn(`❌ M-Pesa request session ${incomingCheckoutId} declined by phone handler with code ${numericResultCode}`);
+        }
+
+        // Standard operational validation requirement: Always acknowledge receipt back to Safaricom systems
+        return res.status(200).json({ ResultCode: 0, ResultDesc: "Callback structured metadata cataloged." });
+
+    } catch (runtimeFault) {
+        console.error("⚠️ CRITICAL FAULT within Webhook Parser logic:", runtimeFault.message);
+        return res.status(500).json({ ResultCode: 1, ResultDesc: "Server processing bottleneck event." });
+    }
 });
 
-// 📋 GET PENDING PAYOUTS
-app.get('/api/admin/payouts', authenticateAdmin, async (req, res) => {
-    try {
-        const result = await pool.query("SELECT * FROM payouts WHERE status = 'PENDING' ORDER BY created_at DESC");
-        res.json({ success: true, list: result.rows });
-    } catch (err) { res.status(500).json({ error: "DB Error" }); }
+// ==========================================
+// 🔍 ROUTE E: FRONTEND LONG-POLLING LIVE PAYMENT STATE TRACKER
+// ==========================================
+app.get('/api/v1/payment/status/:checkoutRequestId', (req, res) => {
+    const paymentStatusInstance = liveMpesaTransactions[req.params.checkoutRequestId];
+    if (!paymentStatusInstance) {
+        return res.status(404).json({ message: "Requested transaction instance key not active inside database registers." });
+    }
+    return res.status(200).json(paymentStatusInstance);
 });
-
-// ✅ APPROVE PAYOUT (Mark as PAID)
-app.post('/api/admin/approve-payout', authenticateAdmin, async (req, res) => {
-    const { payoutId } = req.body;
-    try {
-        // Mark as PAID in DB
-        await pool.query("UPDATE payouts SET status = 'PAID' WHERE id = $1", [payoutId]);
-        res.json({ success: true, message: "Withdrawal Marked as PAID" });
-    } catch (err) { res.status(500).json({ error: "Update Failed" }); }
+ 
+// ==========================================
+// 🚀 DYNAMIC PORT BINDING AND SERVER BOOT
+// ==========================================
+const HOST_PORT = process.env.PORT || 8080;
+app.listen(HOST_PORT, '0.0.0.0', () => {
+    console.log(`🚀 Production Server actively engine-routing on Port ${HOST_PORT} (Host interface: 0.0.0.0)`);
 });
-
-// 📉 INITIATE WITHDRAWAL (From User/Shop)
-app.post('/api/v1/trade/withdraw', async (req, res) => {
-    const { email, amount } = req.body;
-    try {
-        // 1. Check Balance
-        const userRes = await pool.query('SELECT balance FROM users WHERE email = $1', [email]);
-        if(userRes.rows.length === 0) return res.status(404).json({message: "User not found"});
-        
-        const balance = userRes.rows[0].balance;
-        if(balance < amount) return res.status(400).json({message: "Insufficient Funds"});
-
-        // 2. Deduct Balance Immediately
-        await pool.query('UPDATE users SET balance = balance - $1 WHERE email = $2', [amount, email]);
-
-        // 3. Create Payout Record
-        await pool.query('INSERT INTO payouts (user_email, amount) VALUES ($1, $2)', [email, amount]);
-
-        res.json({ success: true, message: "Request Sent to Admin" });
-    } catch (err) { res.status(500).json({ message: "Server Error" }); }
-});
-
-app.listen(PORT, () => console.log(`🚀 MERLIN ENGINE RUNNING ON PORT ${PORT}`));
