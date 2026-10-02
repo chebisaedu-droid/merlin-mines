@@ -136,17 +136,18 @@ app.post('/api/v1/payment/stk-push', async (req, res) => {
         
         // 4. 🟢 PRODUCTION PAYLOAD: Changed to live gateway specification layouts
         const stkPayload = {
-            BusinessShortCode: shortCode,
-            Password: password,
-            Timestamp: timestamp,
-            TransactionType: "CustomerPayBillOnline", // 💡 Switch to "CustomerBuyGoodsOnline" if utilizing a Till Number
-            Amount: Math.floor(Number(price)), 
-            PartyA: phone,            
-            PartyB: shortCode,
-            PhoneNumber: phone,       
-            CallBackURL: callbackUrl,
-            AccountReference: "MERLIN_VS",
-            TransactionDesc: "Combat Stake"
+    BusinessShortCode: shortCode,               // Head Office Shortcode
+    Password: password,
+    Timestamp: timestamp,
+    Amount: Math.floor(Number(price)), 
+    TransactionType: "CustomerBuyGoodsOnline", // ⚠️ Changed to Buy Goods
+    PartyA: phone,            
+    PartyB: process.env.MPESA_TILL_NUMBER,     // ⚠️ Only change: Pass the Till Number here
+    PhoneNumber: phone,       
+    CallBackURL: app_url,
+    AccountReference: "KD-MS",
+    TransactionDesc: "DEV-TICK "
+    
         };
 
         // 5. 🟢 PRODUCTION GATEWAY CONNECTION: Routed out directly to Safaricom's live endpoint
