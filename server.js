@@ -144,7 +144,7 @@ app.post('/api/v1/payment/stk-push', async (req, res) => {
     PartyA: phone,            
     PartyB: process.env.MPESA_TILL_NUMBER,     // ⚠️ Only change: Pass the Till Number here
     PhoneNumber: phone,       
-    CallBackURL: app_url,
+   CallBackURL: callbackUrl,
     AccountReference: "KD-MS",
     TransactionDesc: "DEV-TICK "
     
